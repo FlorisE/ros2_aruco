@@ -52,6 +52,12 @@ class ArucoNode(rclpy.node.Node):
         self.declare_parameter("image_topic", "/camera/image_raw")
         self.declare_parameter("camera_info_topic", "/camera/camera_info")
         self.declare_parameter("camera_frame", None)
+        self.declare_parameter("dictionary_bits", -1)
+        self.declare_parameter("dictionary_size", -1)
+        self.declare_parameter("dictionary_seed", 0)
+        self.declare_parameter("do_corner_refinement", False)
+        self.declare_parameter("corner_refinement_method",
+                               "CORNER_REFINE_NONE")
 
         self.marker_size = self.get_parameter("marker_size").get_parameter_value().double_value
         dictionary_id_name = self.get_parameter(
@@ -61,14 +67,24 @@ class ArucoNode(rclpy.node.Node):
         self.camera_frame = self.get_parameter("camera_frame").get_parameter_value().string_value
 
         # Make sure we have a valid dictionary id:
-        try:
-            dictionary_id = cv2.aruco.__getattribute__(dictionary_id_name)
-            if type(dictionary_id) != type(cv2.aruco.DICT_5X5_100):
-                raise AttributeError
-        except AttributeError:
-            self.get_logger().error("bad aruco_dictionary_id: {}".format(dictionary_id_name))
-            options = "\n".join([s for s in dir(cv2.aruco) if s.startswith("DICT")])
-            self.get_logger().error("valid options: {}".format(options))
+        if dictionary_id_name != "CUSTOM":
+            try:
+                dictionary_id = cv2.aruco.__getattribute__(dictionary_id_name)
+                if type(dictionary_id) != type(cv2.aruco.DICT_5X5_100):
+                    raise AttributeError
+            except AttributeError:
+                self.get_logger().error("bad aruco_dictionary_id: {}".format(dictionary_id_name))
+                options = "\n".join([s for s in dir(cv2.aruco) if s.startswith("DICT")])
+                self.get_logger().error("valid options: {}".format(options))
+
+            self.aruco_dictionary = cv2.aruco.Dictionary_get(dictionary_id)
+        else:
+            dictionary_bits = self.get_parameter("dictionary_bits").get_parameter_value().integer_value
+            dictionary_size = self.get_parameter("dictionary_size").get_parameter_value().integer_value
+            dictionary_seed = self.get_parameter("dictionary_seed").get_parameter_value().integer_value
+            self.aruco_dictionary = cv2.aruco.Dictionary_create(dictionary_bits,
+                                                                dictionary_size,
+                                                                dictionary_seed)
 
         # Set up subscriptions
         self.info_sub = self.create_subscription(CameraInfo,
@@ -88,9 +104,19 @@ class ArucoNode(rclpy.node.Node):
         self.intrinsic_mat = None
         self.distortion = None
 
-        self.aruco_dictionary = cv2.aruco.Dictionary_get(dictionary_id)
         self.aruco_parameters = cv2.aruco.DetectorParameters_create()
         self.bridge = CvBridge()
+
+        if self.get_parameter("do_corner_refinement").get_parameter_value().bool_value:
+            corner_refinement_methods = [
+                'CORNER_REFINE_NONE',
+                'CORNER_REFINE_SUBPIX',
+                'CORNER_REFINE_CONTOUR',
+                'CORNER_REFINE_APRILTAG'
+            ]
+            corner_refinement_method_value = self.get_parameter("corner_refinement_method").get_parameter_value().string_value
+            corner_refinement_method_index = corner_refinement_methods.index(corner_refinement_method_value)
+            self.aruco_parameters.cornerRefinementMethod = corner_refinement_method_index
 
     def info_callback(self, info_msg):
         self.info_msg = info_msg
@@ -116,7 +142,6 @@ class ArucoNode(rclpy.node.Node):
             markers.header.frame_id = self.camera_frame
             pose_array.header.frame_id = self.camera_frame
             
-            
         markers.header.stamp = img_msg.header.stamp
         pose_array.header.stamp = img_msg.header.stamp
 
@@ -133,6 +158,7 @@ class ArucoNode(rclpy.node.Node):
                 rvecs, tvecs = cv2.aruco.estimatePoseSingleMarkers(corners,
                                                                    self.marker_size, self.intrinsic_mat,
                                                                    self.distortion)
+
             for i, marker_id in enumerate(marker_ids):
                 pose = Pose()
                 pose.position.x = tvecs[i][0][0]
