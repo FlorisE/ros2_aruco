@@ -37,8 +37,12 @@ from ros2_aruco import transformations
 
 from sensor_msgs.msg import CameraInfo
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import PoseArray, Pose
+from geometry_msgs.msg import PoseArray, Pose, TransformStamped
 from ros2_aruco_interfaces.msg import ArucoMarkers
+
+from tf2_ros import TransformBroadcaster
+
+import tf_transformations
 
 
 class ArucoNode(rclpy.node.Node):
@@ -56,6 +60,7 @@ class ArucoNode(rclpy.node.Node):
         self.declare_parameter("dictionary_size", -1)
         self.declare_parameter("dictionary_seed", 0)
         self.declare_parameter("do_corner_refinement", False)
+        self.declare_parameter("publish_tf", False)
         self.declare_parameter("corner_refinement_method",
                                "CORNER_REFINE_NONE")
 
@@ -118,6 +123,12 @@ class ArucoNode(rclpy.node.Node):
             corner_refinement_method_index = corner_refinement_methods.index(corner_refinement_method_value)
             self.aruco_parameters.cornerRefinementMethod = corner_refinement_method_index
 
+        self.publish_tf = self.get_parameter("publish_tf").get_parameter_value().bool_value
+
+        if self.publish_tf:
+            self.br = TransformBroadcaster(self)
+
+
     def info_callback(self, info_msg):
         self.info_msg = info_msg
         self.intrinsic_mat = np.reshape(np.array(self.info_msg.k), (3, 3))
@@ -177,6 +188,23 @@ class ArucoNode(rclpy.node.Node):
                 pose_array.poses.append(pose)
                 markers.poses.append(pose)
                 markers.marker_ids.append(marker_id[0])
+
+                if self.publish_tf:
+                    t = TransformStamped()
+
+                    t.header.stamp = img_msg.header.stamp
+                    t.header.frame_id = self.camera_frame or \
+                                        self.info.msg.header.frame_id
+                    t.child_frame_id = f"marker_{marker_id}"
+                    t.transform.translation.x = pose.position.x
+                    t.transform.translation.y = pose.position.y
+                    t.transform.translation.z = pose.position.z
+                    t.transform.rotation.x = quat[0]
+                    t.transform.rotation.y = quat[1]
+                    t.transform.rotation.z = quat[2]
+                    t.transform.rotation.w = quat[3]
+
+                    self.br.sendTransform(t)
 
             self.poses_pub.publish(pose_array)
             self.markers_pub.publish(markers)
