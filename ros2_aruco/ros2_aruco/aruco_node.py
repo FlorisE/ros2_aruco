@@ -256,7 +256,7 @@ class ArucoNode(rclpy.node.Node):
             self.poses_pub.publish(pose_array)
             self.markers_pub.publish(markers)
 
-        if self.publish_charuco_pose:
+        if self.publish_charuco_pose and len(marker_ids) > 0:
             board = cv2.aruco.CharucoBoard_create(self.charuco_square_x,
                                                   self.charuco_square_y,
                                                   self.charuco_square_length,
