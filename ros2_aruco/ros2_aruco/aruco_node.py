@@ -256,64 +256,64 @@ class ArucoNode(rclpy.node.Node):
             self.poses_pub.publish(pose_array)
             self.markers_pub.publish(markers)
 
-        if self.publish_charuco_pose and len(marker_ids) > 0:
-            board = cv2.aruco.CharucoBoard_create(self.charuco_square_x,
-                                                  self.charuco_square_y,
-                                                  self.charuco_square_length,
-                                                  self.marker_size,
-                                                  self.aruco_dictionary)
-            n_corners, \
-                ch_corners, \
-                ch_ids = cv2.aruco.interpolateCornersCharuco(corners,
-                                                             marker_ids,
-                                                             cv_image,
-                                                             board=board)
+            if self.publish_charuco_pose:
+                board = cv2.aruco.CharucoBoard_create(self.charuco_square_x,
+                                                      self.charuco_square_y,
+                                                      self.charuco_square_length,
+                                                      self.marker_size,
+                                                      self.aruco_dictionary)
+                n_corners, \
+                    ch_corners, \
+                    ch_ids = cv2.aruco.interpolateCornersCharuco(corners,
+                                                                 marker_ids,
+                                                                 cv_image,
+                                                                 board=board)
 
-            if n_corners > 0:
-                success, \
-                    rvec, \
-                    tvec = cv2.aruco.estimatePoseCharucoBoard(
-                        ch_corners,
-                        ch_ids,
-                        board,
-                        self.intrinsic_mat,
-                        self.distortion,
-                        None,
-                        None)
+                if n_corners > 0:
+                    success, \
+                        rvec, \
+                        tvec = cv2.aruco.estimatePoseCharucoBoard(
+                            ch_corners,
+                            ch_ids,
+                            board,
+                            self.intrinsic_mat,
+                            self.distortion,
+                            None,
+                            None)
 
-                if success:
-                    board_msg = ChArUcoBoard()
-                    board_msg.pose.position.x = tvec[0][0]
-                    board_msg.pose.position.y = tvec[1][0]
-                    board_msg.pose.position.z = tvec[2][0]
+                    if success:
+                        board_msg = ChArUcoBoard()
+                        board_msg.pose.position.x = tvec[0][0]
+                        board_msg.pose.position.y = tvec[1][0]
+                        board_msg.pose.position.z = tvec[2][0]
 
-                    rot_matrix = np.eye(4)
-                    rot_matrix[0:3, 0:3] = cv2.Rodrigues(np.array(rvec))[0]
-                    quat = transformations.quaternion_from_matrix(rot_matrix)
+                        rot_matrix = np.eye(4)
+                        rot_matrix[0:3, 0:3] = cv2.Rodrigues(np.array(rvec))[0]
+                        quat = transformations.quaternion_from_matrix(rot_matrix)
 
-                    board_msg.pose.orientation.x = quat[0]
-                    board_msg.pose.orientation.y = quat[1]
-                    board_msg.pose.orientation.z = quat[2]
-                    board_msg.pose.orientation.w = quat[3]
+                        board_msg.pose.orientation.x = quat[0]
+                        board_msg.pose.orientation.y = quat[1]
+                        board_msg.pose.orientation.z = quat[2]
+                        board_msg.pose.orientation.w = quat[3]
 
-                    self.charuco_pose_pub.publish(board_msg)
+                        self.charuco_pose_pub.publish(board_msg)
 
-                    if self.publish_tf:
-                        t = TransformStamped()
+                        if self.publish_tf:
+                            t = TransformStamped()
 
-                        t.header.stamp = img_msg.header.stamp
-                        t.header.frame_id = self.camera_frame or \
-                            self.info.msg.header.frame_id
-                        t.child_frame_id = "charuco_board"
-                        t.transform.translation.x = tvec[0][0]
-                        t.transform.translation.y = tvec[1][0]
-                        t.transform.translation.z = tvec[2][0]
-                        t.transform.rotation.x = quat[0]
-                        t.transform.rotation.y = quat[1]
-                        t.transform.rotation.z = quat[2]
-                        t.transform.rotation.w = quat[3]
+                            t.header.stamp = img_msg.header.stamp
+                            t.header.frame_id = self.camera_frame or \
+                                self.info.msg.header.frame_id
+                            t.child_frame_id = "charuco_board"
+                            t.transform.translation.x = tvec[0][0]
+                            t.transform.translation.y = tvec[1][0]
+                            t.transform.translation.z = tvec[2][0]
+                            t.transform.rotation.x = quat[0]
+                            t.transform.rotation.y = quat[1]
+                            t.transform.rotation.z = quat[2]
+                            t.transform.rotation.w = quat[3]
 
-                        self.br.sendTransform(t)
+                            self.br.sendTransform(t)
 
 
 def main():
